@@ -1,8 +1,7 @@
 FROM centos:7
 
-COPY centOS /etc/yum.repos.d/CentOS-Base.repo
+COPY templates/centOS /etc/yum.repos.d/CentOS-Base.repo
 
-# Install Java and other required packages
 RUN yum -y update && \
     yum -y install java-1.8.0-openjdk wget tar openssl
 
@@ -15,22 +14,23 @@ RUN wget https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.78/bin/apache-tomc
     tar xvf /tmp/tomcat.tar.gz --strip-components=1 -C ${CATALINA_HOME} && \
     rm /tmp/tomcat.tar.gz
 
+
 WORKDIR /opt/tomcat/webapps
 
 # Download and deploy the sample web app
-COPY sample.war /opt/tomcat/webapps/sample.war
+COPY App/sample.war /opt/tomcat/webapps/sample.war
 
-# Generate a self-signed SSL certificate
-# RUN openssl req -newkey rsa:2048 -nodes -keyout ${CATALINA_HOME}/conf/ssl/keystore.jks -x509 -days 365 -out ${CATALINA_HOME}/conf/ssl/keystore.jks -subj "/C=US/ST=State/L=City/O=Company/OU=Department/CN=localhost" && \
-#     keytool -importkeystore -deststorepass changeit -destkeypass changeit -destkeystore ${CATALINA_HOME}/conf/ssl/keystore.jks -srckeystore ${CATALINA_HOME}/conf/ssl/keystore.jks -srcstoretype JKS -srcstorepass changeit
+COPY ssl/cert.pem ${CATALINA_HOME}/conf/ssl/cert.pem
+COPY ssl/key.pem ${CATALINA_HOME}/conf/ssl/key.pem
 
-# Configure Tomcat server for SSL
-# RUN sed -i '/<\/Service>/i \
-#   <Connector port="4041" protocol="org.apache.coyote.http11.Http11NioProtocol" \
-#      maxThreads="150" SSLEnabled="true" scheme="https" secure="true" \
-#      clientAuth="false" sslProtocol="TLS" \
-#      keystoreFile="${CATALINA_HOME}/conf/ssl/keystore.jks" \
-#      keystorePass="changeit" />' ${CATALINA_HOME}/conf/server.xml
+
+RUN openssl pkcs12 -export -in ${CATALINA_HOME}/conf/ssl/cert.pem -inkey ${CATALINA_HOME}/conf/ssl/key.pem -out ${CATALINA_HOME}/conf/ssl/keystore.p12 -name tomcat -password pass:changeit
+
+# Convert PKCS#12 to JKS
+RUN $JAVA_HOME/bin/keytool -importkeystore -srckeystore ${CATALINA_HOME}/conf/ssl/keystore.p12 -srcstoretype PKCS12 -srcstorepass changeit -destkeystore ${CATALINA_HOME}/conf/ssl/keystore.jks -deststoretype JKS -deststorepass changeit
+
+
+COPY templates/server.xml ${CATALINA_HOME}/conf/server.xml
 
 # Expose port 4041 for HTTPS
 EXPOSE 4041
